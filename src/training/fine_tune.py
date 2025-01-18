@@ -3,6 +3,7 @@
 import torch
 from torch.utils.data import DataLoader
 from transformers import AutoModelForCausalLM, AutoTokenizer, AdamW
+from tqdm import tqdm
 
 from src.embeddings.reweighting import EmbeddingReweighter, apply_reweighting_loss
 from src.embeddings.adversarial_training import AdversarialTrainer, Adversary
@@ -13,7 +14,7 @@ def fine_tune_model(
     distribution_csv="data/profession_distribution.csv",
     model_name="gpt2",
     batch_size=2,
-    epochs=2
+    epochs=3
 ):
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     dataset = FairDataset(data_csv, tokenizer)
@@ -24,7 +25,7 @@ def fine_tune_model(
     main_model.train()
     
     # Adversary
-    adversary = Adversary(embedding_dim=768)  # adapt dim if needed
+    adversary = Adversary(embedding_dim=768)  # adjust dim as needed
     adv_trainer = AdversarialTrainer(main_model, adversary, alpha=1.0)
 
     # Reweighter
@@ -32,8 +33,13 @@ def fine_tune_model(
 
     optimizer = AdamW(main_model.parameters(), lr=5e-5)
 
+    print("Starting fine-tuning...")
     for epoch in range(epochs):
-        for batch in dataloader:
+        print(f"Epoch {epoch+1}/{epochs}")
+        epoch_loss = 0  # Track epoch loss
+
+        # Use tqdm for progress tracking
+        for batch_idx, batch in enumerate(tqdm(dataloader, desc="Training Progress")):
             optimizer.zero_grad()
 
             input_ids = batch["input_ids"]
@@ -41,7 +47,6 @@ def fine_tune_model(
             role = batch["role"]
             cf_gender = batch["cf_gender"]
 
-            # For GPT2, labels often are input_ids shifted by 1. For simplicity, reuse input_ids here:
             labels = input_ids.clone()
 
             # Adversarial forward pass
@@ -49,18 +54,23 @@ def fine_tune_model(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
                 labels=labels,
-                gender_labels=(cf_gender == "female").long()  # example logic
+                gender_labels=(cf_gender == "female").long()  # example: map gender to numeric labels
             )
             
             # Reweight main_loss based on role + gender
-            # (We only reweight the main_loss portion, not adv_loss)
             w_loss = apply_reweighting_loss(main_loss, role[0], cf_gender[0], reweighter)
             final_loss = w_loss + adv_loss
             final_loss.backward()
 
             optimizer.step()
 
-            print(f"Epoch {epoch} Loss: {final_loss.item()} (Main: {main_loss.item()}, Adv: {adv_loss.item()})")
+            epoch_loss += final_loss.item()
+
+            if batch_idx % 10 == 0:  # Log every 10 batches
+                print(f"Batch {batch_idx} Loss: {final_loss.item()}")
+
+        # Log epoch loss
+        print(f"Epoch {epoch+1} Loss: {epoch_loss/len(dataloader)}")
 
     # Save the final model
     main_model.save_pretrained("results/debiased_model")

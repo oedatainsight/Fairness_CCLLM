@@ -11,18 +11,20 @@ def main():
 
     # 2. Generate or Identify Counterfactuals
     create_augmented_data("data/synthetic_data.csv", "data/cf_augmented.csv")
+    print ("Counterfactuals generated and saved!")
 
     # 3. Train/Fine-Tune a Fair LLM
     fine_tune_model(
         data_csv="data/cf_augmented.csv",
         distribution_csv="data/profession_distribution.csv"
     )
-
+    print ("Model fine-tuned!")
     # 4. Evaluate Fairness
     evaluate_fairness(
         model_path="results/debiased_model",
         test_csv="data/test_prompts.csv"
     )
+    print ("Model evaluated!")
 
     print("Workflow complete!")
 

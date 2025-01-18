@@ -1,6 +1,12 @@
 # src/evaluation/evaluator.py
 import pandas as pd
 from transformers import AutoModelForCausalLM, AutoTokenizer
+import torch
+from src.evaluation.metrics import demographic_parity, counterfactual_consistency
+
+ # src/evaluation/evaluator.py
+import pandas as pd
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from src.evaluation.metrics import demographic_parity, counterfactual_consistency
 
